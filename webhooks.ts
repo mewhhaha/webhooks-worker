@@ -58,11 +58,10 @@ const webhookStream = async (request: Request, env: Env) => {
 
   if (stored) {
     latest = JSON.parse(stored)
+    latest.unshift(video);
   } else {
     latest = (await fetchVideos(env)).result
   }
-
-  latest.unshift(video);
 
   await env.VIDEOS_KV.put("latest", JSON.stringify(latest));
 
