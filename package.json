@@ -1,0 +1,20 @@
+{
+  "name": "webhooks-worker",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deply": "wrangler publish webhooks.ts --name webhooks"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^3.3.1",
+    "wrangler": "^0.0.14"
+  },
+  "dependencies": {
+    "itty-router": "^2.4.10"
+  }
+}
