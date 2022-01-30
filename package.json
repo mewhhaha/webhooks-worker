@@ -12,6 +12,7 @@
   "license": "ISC",
   "devDependencies": {
     "@cloudflare/workers-types": "^3.3.1",
+    "prettier": "^2.5.1",
     "wrangler": "^0.0.14"
   },
   "dependencies": {

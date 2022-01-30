@@ -1,10 +1,32 @@
 
 import { Router } from 'itty-router'
 
+
 type Env = {
   STREAM_WEBHOOK_SECRET: string,
+  STREAM_ACCOUNT_ID: string
+  STREAM_API_TOKEN: string
   VIDEOS_KV: KVNamespace
+
 }
+
+const fetchVideos = async (env: Env) => {
+  const url = new URL(
+    `https://api.cloudflare.com/client/v4/accounts/${env.STREAM_ACCOUNT_ID}/stream`
+  );
+  url.searchParams.set("limit", "10");
+  url.searchParams.set("status", "ready");
+
+  const r = await fetch(url.toString(), {
+    headers: new Headers({
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.STREAM_API_TOKEN}`,
+    }),
+  });
+
+  return r.json<{ result: any[] }>();
+};
+
 
 const router = Router()
 
@@ -31,9 +53,15 @@ const webhookStream = async (request: Request, env: Env) => {
 
   const video = JSON.parse(body);
 
-  const value = await env.VIDEOS_KV.get("latest");
+  const stored = await env.VIDEOS_KV.get("latest");
+  let latest: any[]
 
-  const latest: any[] = value ? JSON.parse(value) : [];
+  if (stored) {
+    latest = JSON.parse(stored)
+  } else {
+    latest = (await fetchVideos(env)).result
+  }
+
   latest.unshift(video);
 
   await env.VIDEOS_KV.put("latest", JSON.stringify(latest));
@@ -76,5 +104,7 @@ const checkSignature = async (
 router.post("/stream", webhookStream)
 
 export default {
-  fetch: router.handle,
+  fetch(request, env, context) {
+    return router.handle(request, env, context)
+  },
 };
