@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "deply": "wrangler publish webhooks.ts --name webhooks"
+    "deploy": "wrangler publish webhooks.ts --name webhooks"
   },
   "author": "",
   "license": "ISC",
