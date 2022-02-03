@@ -5,6 +5,11 @@ kv_namespaces = [
   {binding = "WEBHOOKS_KV", id = "0805f5afc23746ac838aa399864b6ce0"},
 ]
 
+[durable_objects]
+bindings = [
+  {name = "USER_DO", class_name = "User", script_name = "user-do"},
+]
+
 # [secrets]
 # STREAM_WEBHOOK_SECRET
 # STREAM_ACCOUNT_ID

@@ -66,7 +66,7 @@ const withValidBody =
       return new Response("Missing Webhook-Signature header", { status: 422 });
     }
 
-    if (!signatureHeader.match("^time=d+,sig1=w+$")) {
+    if (!signatureHeader.match(/^time=\d+,sig1=\w+$/)) {
       return new Response("Invalid Webhook-Signature header", { status: 422 });
     }
 
@@ -140,12 +140,10 @@ const webhookAuth0StreamWorker = withValidBody<FirstLoginResponse>(
 
     const stub = env.USER_DO.get(id);
 
-    await stub.fetch(`${new URL(request.url).origin}/new`, {
+    return await stub.fetch(`${new URL(request.url).origin}/new`, {
       method: "POST",
       body: JSON.stringify({ slug: id.toString(), ...user }),
     });
-
-    return new Response("ok", { status: 200 });
   }
 );
 
@@ -153,7 +151,5 @@ router.post("/stream", webhookCloudflareStream);
 router.post("/auth0/stream-worker", webhookAuth0StreamWorker);
 
 export default {
-  fetch(request: Request, env: Env) {
-    return router.handle(request, env);
-  },
+  fetch: router.handle,
 };
