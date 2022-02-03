@@ -139,7 +139,7 @@ const webhookStreamWorkerFirstLogin = async (request: Request, env: Env) => {
 
   const stub = env.USER_DO.get(id);
 
-  await stub.fetch("/new", {
+  await stub.fetch(`${new URL(request.url).origin}/new`, {
     method: "POST",
     body: JSON.stringify({ slug: id.toString(), ...user }),
   });
