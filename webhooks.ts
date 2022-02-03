@@ -21,6 +21,7 @@ type Env = {
   AUTH0_WEBHOOK_SECRET: string;
   VIDEOS_KV: KVNamespace;
   USER_DO: DurableObjectNamespace;
+  WEBHOOKS_KV: KVNamespace;
 };
 
 const checkSignature = async (
@@ -55,6 +56,47 @@ const checkSignature = async (
   );
 };
 
+const withValidBody =
+  <JSONBody>(
+    f: (request: Request, env: Env, body: JSONBody) => Promise<Response>
+  ) =>
+  async (request: Request, env: Env) => {
+    const signatureHeader = request.headers.get("Webhook-Signature");
+    if (signatureHeader === null) {
+      return new Response("Missing Webhook-Signature header", { status: 422 });
+    }
+
+    if (!signatureHeader.match("^time=d+,sig1=w+$")) {
+      return new Response("Invalid Webhook-Signature header", { status: 422 });
+    }
+
+    const processed = await env.WEBHOOKS_KV.get(signatureHeader);
+    if (processed !== null) {
+      return new Response("Conflict", { status: 409 });
+    }
+
+    const [time, signature] = signatureHeader
+      .split(",")
+      .map((s) => s.split("=")[1]);
+
+    const body = await request.text();
+    const message = `${time}.${body}`;
+    const valid = await checkSignature(
+      message,
+      signature,
+      env.AUTH0_WEBHOOK_SECRET
+    );
+
+    if (!valid) {
+      return new Response("Signature invalid", { status: 406 });
+    }
+
+    const json = JSON.parse(body);
+    const response = await f(request, env, json);
+    await env.WEBHOOKS_KV.put(signatureHeader, body);
+    return response;
+  };
+
 const fetchVideos = async (env: Env) => {
   const url = new URL(
     `https://api.cloudflare.com/client/v4/accounts/${env.STREAM_ACCOUNT_ID}/stream`
@@ -74,81 +116,41 @@ const fetchVideos = async (env: Env) => {
 
 const router = Router();
 
-const webhookStream = async (request: Request, env: Env) => {
-  const signatureHeader = request.headers.get("Webhook-Signature");
-  if (signatureHeader === null) {
-    return new Response("Missing Webhook-Signature header", { status: 422 });
+const webhookCloudflareStream = withValidBody<StreamVideoResponse>(
+  async (_request, env, video) => {
+    const stored = await env.VIDEOS_KV.get("latest");
+    let latest: any[];
+
+    if (stored) {
+      latest = JSON.parse(stored);
+      latest.unshift(video);
+    } else {
+      latest = (await fetchVideos(env)).result;
+    }
+
+    await env.VIDEOS_KV.put("latest", JSON.stringify(latest));
+
+    return new Response("ok", { status: 200 });
   }
+);
 
-  const [time, signature] = signatureHeader
-    .split(",")
-    .map((s) => s.split("=")[1]);
+const webhookAuth0StreamWorker = withValidBody<FirstLoginResponse>(
+  async (request, env, user) => {
+    const id = env.USER_DO.newUniqueId({ jurisdiction: "eu" });
 
-  const body = await request.text();
-  const message = `${time}.${body}`;
-  const valid = await checkSignature(
-    message,
-    signature,
-    env.STREAM_WEBHOOK_SECRET
-  );
-  if (!valid) {
-    return new Response("Signature invalid", { status: 406 });
+    const stub = env.USER_DO.get(id);
+
+    await stub.fetch(`${new URL(request.url).origin}/new`, {
+      method: "POST",
+      body: JSON.stringify({ slug: id.toString(), ...user }),
+    });
+
+    return new Response("ok", { status: 200 });
   }
+);
 
-  const video = JSON.parse(body);
-
-  const stored = await env.VIDEOS_KV.get("latest");
-  let latest: any[];
-
-  if (stored) {
-    latest = JSON.parse(stored);
-    latest.unshift(video);
-  } else {
-    latest = (await fetchVideos(env)).result;
-  }
-
-  await env.VIDEOS_KV.put("latest", JSON.stringify(latest));
-
-  return new Response("ok", { status: 200 });
-};
-
-const webhookStreamWorkerFirstLogin = async (request: Request, env: Env) => {
-  const signatureHeader = request.headers.get("Webhook-Signature");
-  if (signatureHeader === null) {
-    return new Response("Missing Webhook-Signature header", { status: 422 });
-  }
-
-  const [time, signature] = signatureHeader
-    .split(",")
-    .map((s) => s.split("=")[1]);
-
-  const body = await request.text();
-  const message = `${time}.${body}`;
-  const valid = await checkSignature(
-    message,
-    signature,
-    env.AUTH0_WEBHOOK_SECRET
-  );
-  if (!valid) {
-    return new Response("Signature invalid", { status: 406 });
-  }
-
-  const user = JSON.parse(body) as FirstLoginResponse;
-
-  const id = env.USER_DO.newUniqueId({ jurisdiction: "eu" });
-
-  const stub = env.USER_DO.get(id);
-
-  await stub.fetch(`${new URL(request.url).origin}/new`, {
-    method: "POST",
-    body: JSON.stringify({ slug: id.toString(), ...user }),
-  });
-
-  return new Response("ok", { status: 200 });
-};
-
-router.post("/stream", webhookStream);
-router.post("/auth0/stream-worker", webhookStreamWorkerFirstLogin);
+router.post("/stream", webhookCloudflareStream);
+router.post("/auth0/stream-worker", webhookAuth0StreamWorker);
 
 export default {
   fetch(request: Request, env: Env) {
