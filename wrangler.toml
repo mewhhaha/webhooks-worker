@@ -1,1 +1,12 @@
 compatibility_date = "2022-01-30"
+
+kv_namespaces = [
+  {binding = "VIDEOS_KV", id = "e05e87277e004ffe88349adc9eb939ca"},
+  {binding = "WEBHOOKS_KV", id = "0805f5afc23746ac838aa399864b6ce0"},
+]
+
+# [secrets]
+# STREAM_WEBHOOK_SECRET
+# STREAM_ACCOUNT_ID
+# STREAM_API_TOKEN
+# AUTH0_WEBHOOK_SECRET
