@@ -58,6 +58,7 @@ type Env = {
   STREAM_API_TOKEN: string;
   AUTH0_WEBHOOK_SECRET: string;
   USER_DO: DurableObjectNamespace;
+  SETTINGS_DO: DurableObjectNamespace;
   VIDEOS_KV: KVNamespace;
   CACHE_KV: KVNamespace;
   WEBHOOKS_KV: KVNamespace;
@@ -158,6 +159,28 @@ const fetchVideos = async (
   return r.json<StreamListResponse>();
 };
 
+const updateVideo = async (
+  env: Env,
+  id: string,
+  options: { limit?: number; status?: "ready"; search?: string } = {}
+) => {
+  const url = new URL(
+    `https://api.cloudflare.com/client/v4/accounts/${env.STREAM_ACCOUNT_ID}/stream`
+  );
+  if (options.limit) url.searchParams.set("limit", options.limit.toString());
+  if (options.status) url.searchParams.set("status", options.status);
+  if (options.search) url.searchParams.set("search", options.search);
+
+  const r = await fetch(url.toString(), {
+    headers: new Headers({
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.STREAM_API_TOKEN}`,
+    }),
+  });
+
+  return r.json<StreamListResponse>();
+};
+
 const router = Router();
 
 const webhookCloudflareStream = withValidBody<Video>(
@@ -179,6 +202,8 @@ const webhookCloudflareStream = withValidBody<Video>(
     };
 
     const updateJKOT = async () => {
+      if (!video.meta.name.includes("jkot-stream")) return;
+
       const latest = (
         await fetchVideos(env, { status: "ready", search: "jkot-stream" })
       ).result;
@@ -188,13 +213,6 @@ const webhookCloudflareStream = withValidBody<Video>(
 
     await Promise.all([updateVideos(), updateJKOT()]);
 
-    return new Response("ok", { status: 200 });
-  }
-);
-
-const webhookCloudflareStreamLive = withValidBody<Video>(
-  (_request, env) => env.STREAM_LIVE_WEBHOOK_SECRET,
-  async (_request, env, video) => {
     return new Response("ok", { status: 200 });
   }
 );
@@ -214,7 +232,6 @@ const webhookAuth0StreamWorker = withValidBody<FirstLoginResponse>(
 );
 
 router.post("/stream", webhookCloudflareStream);
-router.post("/stream/live", webhookCloudflareStreamLive);
 router.post("/auth0/stream-worker", webhookAuth0StreamWorker);
 
 export default {
