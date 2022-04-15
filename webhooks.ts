@@ -159,28 +159,6 @@ const fetchVideos = async (
   return r.json<StreamListResponse>();
 };
 
-const updateVideo = async (
-  env: Env,
-  id: string,
-  options: { limit?: number; status?: "ready"; search?: string } = {}
-) => {
-  const url = new URL(
-    `https://api.cloudflare.com/client/v4/accounts/${env.STREAM_ACCOUNT_ID}/stream`
-  );
-  if (options.limit) url.searchParams.set("limit", options.limit.toString());
-  if (options.status) url.searchParams.set("status", options.status);
-  if (options.search) url.searchParams.set("search", options.search);
-
-  const r = await fetch(url.toString(), {
-    headers: new Headers({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.STREAM_API_TOKEN}`,
-    }),
-  });
-
-  return r.json<StreamListResponse>();
-};
-
 const router = Router();
 
 const webhookCloudflareStream = withValidBody<Video>(
