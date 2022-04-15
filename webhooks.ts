@@ -1,10 +1,47 @@
 import { Router } from "itty-router";
 
-type StreamVideoResponse = {
+type Video = {
+  uid: string;
+  thumbnail: string;
+  thumbnailTimestampPct: number;
+  readyToStream: boolean;
+  status: {
+    state: string;
+    pctComplete: string;
+    errorReasonCode: string;
+    errorReasonText: string;
+  };
+  meta: {
+    name: string;
+  };
+  created: string;
+  modified: string;
+  size: number;
+  preview: string;
+  allowedOrigins: string[];
+  requireSignedURLs: boolean;
+  uploaded: string;
+  uploadExpiry: null;
+  maxSizeBytes: null;
+  maxDurationSeconds: null;
+  duration: number;
+  input: {
+    width: number;
+    height: number;
+  };
+  playback: {
+    hls: string;
+    dash: string;
+  };
+  watermark: null;
+  liveInput: string;
+};
+
+type StreamListResponse = {
   success: boolean;
   errors: unknown[];
   messages: unknown[];
-  result: any[];
+  result: Video[];
   total: string;
   range: string;
 };
@@ -16,11 +53,13 @@ type FirstLoginResponse = {
 
 type Env = {
   STREAM_WEBHOOK_SECRET: string;
+  STREAM_LIVE_WEBHOOK_SECRET: string;
   STREAM_ACCOUNT_ID: string;
   STREAM_API_TOKEN: string;
   AUTH0_WEBHOOK_SECRET: string;
-  VIDEOS_KV: KVNamespace;
   USER_DO: DurableObjectNamespace;
+  VIDEOS_KV: KVNamespace;
+  CACHE_KV: KVNamespace;
   WEBHOOKS_KV: KVNamespace;
 };
 
@@ -58,6 +97,7 @@ const checkSignature = async (
 
 const withValidBody =
   <JSONBody>(
+    secret: (request: Request, env: Env) => string,
     f: (request: Request, env: Env, body: JSONBody) => Promise<Response>
   ) =>
   async (request: Request, env: Env) => {
@@ -84,7 +124,7 @@ const withValidBody =
     const valid = await checkSignature(
       message,
       signature,
-      env.AUTH0_WEBHOOK_SECRET
+      secret(request, env)
     );
 
     if (!valid) {
@@ -97,12 +137,16 @@ const withValidBody =
     return response;
   };
 
-const fetchVideos = async (env: Env) => {
+const fetchVideos = async (
+  env: Env,
+  options: { limit?: number; status?: "ready"; search?: string } = {}
+) => {
   const url = new URL(
     `https://api.cloudflare.com/client/v4/accounts/${env.STREAM_ACCOUNT_ID}/stream`
   );
-  url.searchParams.set("limit", "10");
-  url.searchParams.set("status", "ready");
+  if (options.limit) url.searchParams.set("limit", options.limit.toString());
+  if (options.status) url.searchParams.set("status", options.status);
+  if (options.search) url.searchParams.set("search", options.search);
 
   const r = await fetch(url.toString(), {
     headers: new Headers({
@@ -111,30 +155,52 @@ const fetchVideos = async (env: Env) => {
     }),
   });
 
-  return r.json<StreamVideoResponse>();
+  return r.json<StreamListResponse>();
 };
 
 const router = Router();
 
-const webhookCloudflareStream = withValidBody<StreamVideoResponse>(
+const webhookCloudflareStream = withValidBody<Video>(
+  (_request, env) => env.STREAM_WEBHOOK_SECRET,
   async (_request, env, video) => {
-    const stored = await env.VIDEOS_KV.get("latest");
-    let latest: any[];
+    const updateVideos = async () => {
+      const stored = await env.VIDEOS_KV.get("latest");
+      let latest: any[];
 
-    if (stored) {
-      latest = JSON.parse(stored);
-      latest.unshift(video);
-    } else {
-      latest = (await fetchVideos(env)).result;
-    }
+      if (stored) {
+        latest = JSON.parse(stored);
+        latest.unshift(video);
+      } else {
+        latest = (await fetchVideos(env, { limit: 10, status: "ready" }))
+          .result;
+      }
 
-    await env.VIDEOS_KV.put("latest", JSON.stringify(latest));
+      await env.VIDEOS_KV.put("latest", JSON.stringify(latest));
+    };
+
+    const updateJKOT = async () => {
+      const latest = (
+        await fetchVideos(env, { status: "ready", search: "jkot-stream" })
+      ).result;
+
+      await env.CACHE_KV.put("videos", JSON.stringify(latest));
+    };
+
+    await Promise.all([updateVideos(), updateJKOT()]);
 
     return new Response("ok", { status: 200 });
   }
 );
 
+const webhookCloudflareStreamLive = withValidBody<Video>(
+  (_request, env) => env.STREAM_LIVE_WEBHOOK_SECRET,
+  async (_request, env, video) => {
+    return new Response("ok", { status: 200 });
+  }
+);
+
 const webhookAuth0StreamWorker = withValidBody<FirstLoginResponse>(
+  (_request, env) => env.AUTH0_WEBHOOK_SECRET,
   async (request, env, user) => {
     const id = env.USER_DO.newUniqueId({ jurisdiction: "eu" });
 
@@ -148,6 +214,7 @@ const webhookAuth0StreamWorker = withValidBody<FirstLoginResponse>(
 );
 
 router.post("/stream", webhookCloudflareStream);
+router.post("/stream/live", webhookCloudflareStreamLive);
 router.post("/auth0/stream-worker", webhookAuth0StreamWorker);
 
 export default {
