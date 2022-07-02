@@ -11,11 +11,11 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@cloudflare/workers-types": "^3.3.1",
-    "prettier": "^2.5.1",
-    "wrangler": "^0.0.25"
+    "@cloudflare/workers-types": "^3.14.0",
+    "prettier": "^2.7.1",
+    "wrangler": "^2.0.15"
   },
   "dependencies": {
-    "itty-router": "^2.4.10"
+    "itty-router": "^2.6.1"
   }
 }

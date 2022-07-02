@@ -1,9 +1,10 @@
 compatibility_date = "2022-01-30"
 
 kv_namespaces = [
-  {binding = "VIDEOS_KV", id = "e05e87277e004ffe88349adc9eb939ca"},
+  {binding = "VIDEO_KV", id = "e05e87277e004ffe88349adc9eb939ca"},
   {binding = "WEBHOOKS_KV", id = "0805f5afc23746ac838aa399864b6ce0"},
   {binding = "CACHE_KV", id = "d7bc6e6ec2244a44bc0da1ff6173866f"},
+  {binding = "IMAGE_KV", id = "39a6bfc25aee40dcbf591588cc43683e"},
 ]
 
 [durable_objects]

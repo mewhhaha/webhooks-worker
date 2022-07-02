@@ -1,5 +1,13 @@
 import { Router } from "itty-router";
 
+type VideoSettings = {
+  id?: string;
+  created?: string;
+  title?: string;
+  status: "published" | "unpublished";
+  description?: string;
+};
+
 type Video = {
   uid: string;
   thumbnail: string;
@@ -163,10 +171,10 @@ const router = Router();
 
 const webhookCloudflareStream = withValidBody<Video>(
   (_request, env) => env.STREAM_WEBHOOK_SECRET,
-  async (_request, env, video) => {
+  async (request, env, video) => {
     const updateVideos = async () => {
       const stored = await env.VIDEOS_KV.get("latest");
-      let latest: any[];
+      let latest: Video[];
 
       if (stored) {
         latest = JSON.parse(stored);
@@ -182,11 +190,26 @@ const webhookCloudflareStream = withValidBody<Video>(
     const updateJKOT = async () => {
       if (!video.meta.name.includes("jkot-stream")) return;
 
-      const latest = (
-        await fetchVideos(env, { status: "ready", search: "jkot-stream" })
-      ).result;
+      const doid = env.SETTINGS_DO.idFromName("admin");
 
-      await env.CACHE_KV.put("videos", JSON.stringify(latest));
+      const stub = env.SETTINGS_DO.get(doid);
+
+      const settings: VideoSettings = {
+        id: video.uid,
+        created: video.created,
+        title: video.meta.name,
+        status: "unpublished",
+        description: "",
+      };
+
+      return await stub.fetch(
+        `${new URL(request.url).origin}/video/${video.uid}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(settings),
+        }
+      );
     };
 
     await Promise.all([updateVideos(), updateJKOT()]);
@@ -214,4 +237,9 @@ router.post("/auth0/stream-worker", webhookAuth0StreamWorker);
 
 export default {
   fetch: router.handle,
+};
+
+const invertTime = (time: number) => {
+  const max = Number(time.toString().replace(/[0-9]/g, "9"));
+  return max - time;
 };
